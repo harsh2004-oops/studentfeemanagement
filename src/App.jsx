@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Users, UserPlus, DollarSign, Calendar, Search, Filter, Edit, Clock, Send, AlertCircle, IndianRupee } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Users, UserPlus, DollarSign, Calendar, Search, Filter, Edit, Clock, Send, AlertCircle, IndianRupee, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from './supabaseClient';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const FeeManagerModal = ({ student, onClose, onUpdate }) => {
-  const [monthlyStatus, setMonthlyStatus] = useState(student.feesPaid || Array(12).fill(false));
+const FeeManagerModal = ({ student, onClose, onUpdate, onDelete }) => {
+  const [monthlyStatus, setMonthlyStatus] = useState(student.fees_paid || Array(12).fill(false));
 
   const handleCheckboxChange = (index) => {
     const newStatus = [...monthlyStatus];
@@ -22,6 +23,13 @@ const FeeManagerModal = ({ student, onClose, onUpdate }) => {
     onClose();
   };
 
+  const handleDeleteClick = () => {
+    if (window.confirm(`Are you sure you want to delete ${student.name}? This action cannot be undone.`)) {
+      onDelete(student.id);
+      onClose();
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -37,8 +45,15 @@ const FeeManagerModal = ({ student, onClose, onUpdate }) => {
         className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Manage Fees</h2>
-        <p className="text-gray-600 mb-6">For: <span className="font-semibold">{student.name}</span></p>
+        <div className="flex justify-between items-start">
+            <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Manage Fees</h2>
+                <p className="text-gray-600 mb-6">For: <span className="font-semibold">{student.name}</span></p>
+            </div>
+            <motion.button onClick={handleDeleteClick} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="p-2 text-red-500 hover:bg-red-100 rounded-full">
+                <Trash2 />
+            </motion.button>
+        </div>
         
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 mb-6">
           {MONTHS.map((month, index) => (
@@ -89,67 +104,93 @@ const App = () => {
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        const savedStudents = localStorage.getItem('students');
-        if (savedStudents) {
-          const parsedStudents = JSON.parse(savedStudents);
-          const migratedStudents = parsedStudents.map(student => {
-            if (typeof student.feesPaid === 'boolean' || !Array.isArray(student.feesPaid)) {
-              return { ...student, feesPaid: Array(12).fill(student.feesPaid || false) };
-            }
-            return student;
-          });
-          setStudents(migratedStudents);
-        }
-      } catch (error) {
-        console.error("Error parsing or migrating students from localStorage", error);
-      }
-      setLoading(false);
-    }, 500);
+  const fetchStudents = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    return () => clearTimeout(timer);
+    if (error) {
+      console.error('Error fetching students:', error);
+    } else {
+      setStudents(data);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (!loading) {
-      localStorage.setItem('students', JSON.stringify(students));
-    }
-  }, [students, loading]);
+    fetchStudents();
+  }, [fetchStudents]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (formData.name && formData.standard && formData.schoolName && formData.phoneNumber && formData.monthlyFees) {
-      const newStudent = {
-        id: Date.now(),
-        ...formData,
-        createdAt: new Date().toISOString(),
-        feesPaid: Array(12).fill(false),
+      const newStudentPayload = {
+        name: formData.name,
+        standard: formData.standard,
+        school_name: formData.schoolName,
+        phone_number: formData.phoneNumber,
+        monthly_fees: parseFloat(formData.monthlyFees),
+        fees_paid: Array(12).fill(false),
       };
-      setStudents(prev => [...prev, newStudent]);
-      setFormData({ name: '', standard: '', schoolName: '', phoneNumber: '', monthlyFees: '' });
-      setShowForm(false);
+
+      const { data, error } = await supabase
+        .from('students')
+        .insert([newStudentPayload])
+        .select();
+
+      if (error) {
+        console.error('Error adding student:', error);
+      } else if (data) {
+        setStudents(prev => [data[0], ...prev]);
+        setFormData({ name: '', standard: '', schoolName: '', phoneNumber: '', monthlyFees: '' });
+        setShowForm(false);
+      }
     }
   };
 
-  const handleUpdateFees = (studentId, newFeesPaid) => {
+  const handleUpdateFees = async (studentId, newFeesPaid) => {
     setStudents(prev => prev.map(student =>
-      student.id === studentId ? { ...student, feesPaid: newFeesPaid } : student
+      student.id === studentId ? { ...student, fees_paid: newFeesPaid } : student
     ));
+
+    const { error } = await supabase
+      .from('students')
+      .update({ fees_paid: newFeesPaid })
+      .eq('id', studentId);
+
+    if (error) {
+      console.error('Error updating fees:', error);
+      fetchStudents();
+    }
+  };
+
+  const handleDeleteStudent = async (studentId) => {
+    setStudents(prev => prev.filter(student => student.id !== studentId));
+
+    const { error } = await supabase
+        .from('students')
+        .delete()
+        .eq('id', studentId);
+
+    if (error) {
+        console.error('Error deleting student:', error);
+        fetchStudents();
+    }
   };
 
   const formatPhoneNumber = (phone) => {
-    return phone.replace(/\D/g, '');
+    return phone ? phone.replace(/\D/g, '') : '';
   }
 
   const getFeeStatus = (student, monthIndex) => {
-    const feesPaid = student.feesPaid || [];
+    const feesPaid = student.fees_paid || [];
     if (monthIndex > -1) {
         const paid = feesPaid[monthIndex];
         return { text: paid ? 'Paid' : 'Unpaid', color: paid ? 'green' : 'red' };
@@ -160,17 +201,17 @@ const App = () => {
     return { text: 'Partially Paid', color: 'yellow', count: paidCount };
   };
 
-  const fullyPaidCount = useMemo(() => students.filter(s => s.feesPaid && s.feesPaid.every(p => p)).length, [students]);
+  const fullyPaidCount = useMemo(() => students.filter(s => s.fees_paid && s.fees_paid.every(p => p)).length, [students]);
   const pendingCount = useMemo(() => students.length - fullyPaidCount, [students, fullyPaidCount]);
 
   const filteredStudents = useMemo(() => students.filter(student => {
     const nameMatch = student.name && student.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const schoolMatch = student.schoolName && student.schoolName.toLowerCase().includes(searchTerm.toLowerCase());
+    const schoolMatch = student.school_name && student.school_name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSearch = nameMatch || schoolMatch;
 
     if (!matchesSearch) return false;
 
-    const feesPaid = student.feesPaid || [];
+    const feesPaid = student.fees_paid || [];
     if (selectedMonth > -1) {
         const monthPaid = feesPaid[selectedMonth];
         if (filterStatus === 'paid') return monthPaid;
@@ -187,9 +228,9 @@ const App = () => {
   const monthlyStats = useMemo(() => {
     if (selectedMonth === -1) return null;
 
-    const remainingStudents = students.filter(s => s.feesPaid && !s.feesPaid[selectedMonth]);
+    const remainingStudents = students.filter(s => s.fees_paid && !s.fees_paid[selectedMonth]);
     const remainingCount = remainingStudents.length;
-    const remainingAmount = remainingStudents.reduce((sum, s) => sum + parseFloat(s.monthlyFees || 0), 0);
+    const remainingAmount = remainingStudents.reduce((sum, s) => sum + parseFloat(s.monthly_fees || 0), 0);
 
     return { remainingCount, remainingAmount };
   }, [students, selectedMonth]);
@@ -201,7 +242,7 @@ const App = () => {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading Student Fee Manager...</p>
+          <p className="text-gray-600">Loading Student Data...</p>
         </div>
       </div>
     );
@@ -335,11 +376,11 @@ const App = () => {
                 };
                 const showReminder = feeStatus.color === 'red' || (selectedMonth === -1 && feeStatus.color === 'yellow');
                 
-                let reminderText = `Hello ${student.name}, this is a friendly reminder that your fee of ₹${student.monthlyFees} is pending. Thank you.`;
+                let reminderText = `Hello ${student.name}, this is a friendly reminder that your fee of ₹${student.monthly_fees} is pending. Thank you.`;
                 if (selectedMonth > -1) {
-                    reminderText = `Hello ${student.name}, this is a friendly reminder that your fee of ₹${student.monthlyFees} for the month of ${MONTHS[selectedMonth]} is pending. Thank you.`;
+                    reminderText = `Hello ${student.name}, this is a friendly reminder that your fee of ₹${student.monthly_fees} for the month of ${MONTHS[selectedMonth]} is pending. Thank you.`;
                 }
-                const whatsappLink = `https://wa.me/${formatPhoneNumber(student.phoneNumber)}?text=${encodeURIComponent(reminderText)}`;
+                const whatsappLink = `https://wa.me/${formatPhoneNumber(student.phone_number)}?text=${encodeURIComponent(reminderText)}`;
 
                 return (
                   <motion.div key={student.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="bg-white rounded-xl shadow-md p-4 border border-gray-100 hover:shadow-lg transition-all duration-300">
@@ -347,13 +388,13 @@ const App = () => {
                       <div className="flex items-center space-x-3">
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-gray-900 truncate">{student.name}</h3>
-                          <p className="text-sm text-gray-600 truncate">{student.standard} • {student.schoolName}</p>
-                          <p className="text-xs text-gray-500 mt-1">📞 {student.phoneNumber}</p>
+                          <p className="text-sm text-gray-600 truncate">{student.standard} • {student.school_name}</p>
+                          <p className="text-xs text-gray-500 mt-1">📞 {student.phone_number}</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
                         <div className="text-right">
-                          <p className="font-semibold text-gray-900">₹{student.monthlyFees}</p>
+                          <p className="font-semibold text-gray-900">₹{student.monthly_fees}</p>
                           <p className="text-xs text-gray-500">Monthly</p>
                         </div>
                         <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setManagingStudentId(student.id)} className="p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all duration-300">
@@ -430,6 +471,7 @@ const App = () => {
             student={managingStudent} 
             onClose={() => setManagingStudentId(null)} 
             onUpdate={handleUpdateFees} 
+            onDelete={handleDeleteStudent}
           />
         )}
       </AnimatePresence>
