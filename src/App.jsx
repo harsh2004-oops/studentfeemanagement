@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Users, UserPlus, DollarSign, Calendar, Search, Filter, Edit, Clock, Send, AlertCircle, IndianRupee, Trash2 } from 'lucide-react';
+import { Users, UserPlus, DollarSign, Calendar, Search, Filter, Edit, Clock, Send, AlertCircle, IndianRupee, Trash2, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './supabaseClient';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const formatPhoneNumber = (phone) => {
+  return phone ? phone.replace(/\D/g, '') : '';
+};
 
 const FeeManagerModal = ({ student, onClose, onUpdate, onDelete }) => {
   const [monthlyStatus, setMonthlyStatus] = useState(student.fees_paid || Array(12).fill(false));
@@ -28,7 +32,30 @@ const FeeManagerModal = ({ student, onClose, onUpdate, onDelete }) => {
       onDelete(student.id);
       onClose();
     }
-  }
+  };
+
+  const getConfirmationLink = (monthIndex) => {
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const year = today.getFullYear();
+    const monthName = MONTHS[today.getMonth()];
+    const formattedDate = `${day}-${monthName}-${year}`;
+
+    const confirmationText = `
+📘 Fee Payment Receipt
+Institute Name: Hitesh Sir Classes
+Student Name: ${student.name}
+Class/Grade: ${student.standard}
+Month: ${MONTHS[monthIndex]} ${year}
+Amount Paid: ₹${student.monthly_fees}
+Payment Status: ✅ Paid Successfully
+Date of Payment: ${formattedDate}
+Thank you for your timely payment.
+– [Hitesh Sir ]
+    `.trim();
+
+    return `https://wa.me/${formatPhoneNumber(student.phone_number)}?text=${encodeURIComponent(confirmationText)}`;
+  };
 
   return (
     <motion.div
@@ -55,17 +82,25 @@ const FeeManagerModal = ({ student, onClose, onUpdate, onDelete }) => {
             </motion.button>
         </div>
         
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
           {MONTHS.map((month, index) => (
-            <label key={month} className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={monthlyStatus[index]}
-                onChange={() => handleCheckboxChange(index)}
-                className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <span className="text-gray-700 font-medium">{month}</span>
-            </label>
+            <div key={month} className="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={monthlyStatus[index]}
+                  onChange={() => handleCheckboxChange(index)}
+                  className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <span className="text-gray-700 font-medium">{month}</span>
+              </label>
+              {monthlyStatus[index] && (
+                <a href={getConfirmationLink(index)} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-1 mt-2 text-xs text-green-600 hover:underline">
+                  <CheckCircle className="h-3 w-3" />
+                  <span>Send Confirmation</span>
+                </a>
+              )}
+            </div>
           ))}
         </div>
 
