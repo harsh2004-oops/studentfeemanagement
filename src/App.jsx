@@ -43,7 +43,7 @@ const FeeManagerModal = ({ student, onClose, onUpdate, onDelete }) => {
 
     const confirmationText = `
 📘 Fee Payment Receipt
-Institute Name: Hitesh Sir Classes
+Institute Name: Hitesh sir coaching classes
 Student Name: ${student.name}
 Class/Grade: ${student.standard}
 Month: ${MONTHS[monthIndex]} ${year}
@@ -51,10 +51,26 @@ Amount Paid: ₹${student.monthly_fees}
 Payment Status: ✅ Paid Successfully
 Date of Payment: ${formattedDate}
 Thank you for your timely payment.
-– [Hitesh Sir ]
-    `.trim();
+– Hitesh Sir`;
 
     return `https://wa.me/${formatPhoneNumber(student.phone_number)}?text=${encodeURIComponent(confirmationText)}`;
+  };
+
+  const getReminderLink = (monthIndex) => {
+    const year = new Date().getFullYear();
+    const reminderText = `📘 Fee Payment Reminder
+Institute Name: Hitesh sir coaching classes
+Student Name: ${student.name}
+Class/Grade: ${student.standard}
+Month: ${MONTHS[monthIndex]} ${year}
+Amount Due: ₹ ${student.monthly_fees}
+Payment Status: ❌ Pending
+
+Kindly clear the pending fees at the earliest to avoid any inconvenience.
+We value your support in your child’s learning journey.
+–  Hitesh Sir`;
+
+    return `https://wa.me/${formatPhoneNumber(student.phone_number)}?text=${encodeURIComponent(reminderText.trim())}`;
   };
 
   return (
@@ -90,14 +106,18 @@ Thank you for your timely payment.
                   type="checkbox"
                   checked={monthlyStatus[index]}
                   onChange={() => handleCheckboxChange(index)}
-                  className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
+                  className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"n                />
                 <span className="text-gray-700 font-medium">{month}</span>
               </label>
-              {monthlyStatus[index] && (
+              {monthlyStatus[index] ? (
                 <a href={getConfirmationLink(index)} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-1 mt-2 text-xs text-green-600 hover:underline">
                   <CheckCircle className="h-3 w-3" />
                   <span>Send Confirmation</span>
+                </a>
+              ) : (
+                <a href={getReminderLink(index)} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-1 mt-2 text-xs text-red-600 hover:underline">
+                  <Send className="h-3 w-3" />
+                  <span>Send Reminder</span>
                 </a>
               )}
             </div>
@@ -409,14 +429,6 @@ const App = () => {
                   red: 'bg-red-100 text-red-800',
                   yellow: 'bg-yellow-100 text-yellow-800',
                 };
-                const showReminder = feeStatus.color === 'red' || (selectedMonth === -1 && feeStatus.color === 'yellow');
-                
-                let reminderText = `Hello ${student.name}, this is a friendly reminder that your fee of ₹${student.monthly_fees} is pending. Thank you.`;
-                if (selectedMonth > -1) {
-                    reminderText = `Hello ${student.name}, this is a friendly reminder that your fee of ₹${student.monthly_fees} for the month of ${MONTHS[selectedMonth]} is pending. Thank you.`;
-                }
-                const whatsappLink = `https://wa.me/${formatPhoneNumber(student.phone_number)}?text=${encodeURIComponent(reminderText)}`;
-
                 return (
                   <motion.div key={student.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="bg-white rounded-xl shadow-md p-4 border border-gray-100 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between">
@@ -442,18 +454,12 @@ const App = () => {
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColorClasses[feeStatus.color]}`}>
                           {feeStatus.text} {selectedMonth > -1 ? `for ${MONTHS[selectedMonth]}` : ''}
                         </span>
-                        {showReminder ? (
-                            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors duration-200">
-                                <Send className="h-4 w-4" />
-                                <span className="text-xs font-semibold">Remind</span>
-                            </a>
-                        ) : (
-                            selectedMonth === -1 && (
+                        {selectedMonth === -1 && (
                                 <span className="text-xs text-gray-500">
                                     {feeStatus.count} / 12 months paid
                                 </span>
                             )
-                        )}
+                        }
                       </div>
                     </div>
                   </motion.div>
